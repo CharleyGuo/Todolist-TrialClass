@@ -12,10 +12,9 @@ db.Tasks.insert_one({
     "taskName": "testName", 
     "taskDescription": "testDesc", 
     "taskPriority": 0, 
-    "taskStatus": False,
+    "taskStatus": "False",
     "completionDate": "2024-10-31",
-    "creationDate": "2024-10-27",
-    "parentID": 1})
+    "creationDate": "2024-10-27"})
 
 db.Lists.insert_one({
     "listID": 1, 

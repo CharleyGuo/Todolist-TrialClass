@@ -2,6 +2,9 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Optional
 import todo
+import time
+import datetime
+import json
 from fastapi.middleware.cors import CORSMiddleware
 
 class Item(BaseModel):
@@ -19,18 +22,11 @@ app.add_middleware(
 
 @app.delete("/task/deleteall")
 async def deleteTask():
-    todo.db.Tasks.delete_many({})
+    todo.tasks.delete_many({})
 
-# Keep this commented out code if useful, otherwise remove. 
-# async def createTask(request: Request):
-#     req_json = request.json()
-#     print(req_json)
-#     todo.db.Tasks.insert_one(req_json)
-#     return todo.db.collection.find_one({"taskID":{"$eq":id}})
-# 
-# @app.get("/task/read")
-# async def readTask(id):
-#     return todo.db.collection.find_one({"taskID":{"$eq":id}})
+@app.get("/task/read")
+async def readTask(id):
+    return todo.db.collection.find_one({"taskID":{"$eq":id}})
 
 @app.get("/task/read_sample")
 async def readTaskSample(id):
@@ -41,29 +37,38 @@ async def readTaskSample(id):
     "taskPriority": 1, 
     "taskStatus": False,
     "completionDate": "2024-10-31",
-    "creationDate": "2024-10-27",
-    "parentID": 1
+    "creationDate": "2024-10-27"
     }
 
-@app.post("/task/create")
-async def createTask(id, name, desc, priority, status, compDate, createDate, parentID):
-    todo.db.Tasks.insert_one({
-        "taskID": id, 
-        "taskName": name, 
-        "taskDescription": desc, 
-        "taskPriority": priority, 
-        "taskStatus": status,
-        "completionDate": compDate,
-        "creationDate": createDate,
-        "parentID": parentID})
-    document = todo.db.Tasks.find_one({"taskID": id})
-    if document:
-        document["_id"] = str(document["_id"])
-    return document
+class Task(BaseModel):
+    name: str
+    desc: str = ""
+    priority: int = 10
+    status: bool = False
+    compDate: str = str(datetime.date.today())
+    createDate: str = str(datetime.date.today())
 
-@app.get("/task/read")
-async def readTask(id: int):
-    document = todo.db.Tasks.find_one({"taskID": id})
-    if document:
-        document["_id"] = str(document["_id"])
-    return document
+@app.post("/task/create")
+async def create_task(task: Task):
+    task_id = int(time.time() * 1000)
+    new_task = {
+        "taskID": task_id,
+        "taskName": task.name,
+        "taskDescription": task.desc,
+        "taskPriority": task.priority,
+        "taskStatus": task.status,
+        "completionDate": task.compDate,
+        "creationDate": task.createDate,
+    }
+    print(new_task)
+    todo.tasks.insert_one(new_task)
+    return str(new_task)
+
+@app.get("/task/readall")
+async def readAllTasks():
+    documents = todo.tasks.find()
+    tasks = []
+    for doc in documents:
+        doc["_id"] = str(doc["_id"])
+        tasks.append(doc)
+    return tasks
