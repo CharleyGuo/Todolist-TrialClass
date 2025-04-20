@@ -1,15 +1,13 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Optional
-import todo
 import time
 import datetime
 import json
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo import MongoClient
 
-class Item(BaseModel):
-    name: str
-
+# Setting up the FastAPI application
 app = FastAPI()
 origins = ["*"]
 app.add_middleware(
@@ -20,13 +18,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Setting up the MongoDB client
+client = MongoClient("mongodb://127.0.0.1:27017")
+db = client['To-do']
+tasks_collection = db["Tasks"]
+lists = db["Lists"]
+
+# Base classes
+class Task(BaseModel):
+    name: str
+    desc: str = ""
+    priority: int = 10
+    status: bool = False
+    compDate: str = str(datetime.date.today())
+    createDate: str = str(datetime.date.today())
+
+#Endpoints
+
 @app.delete("/task/deleteall")
 async def deleteTask():
-    todo.tasks.delete_many({})
+    tasks_collection.delete_many({})
 
 @app.get("/task/read")
 async def readTask(id):
-    return todo.db.collection.find_one({"taskID":{"$eq":id}})
+    return tasks_collection.find_one({"taskID":{"$eq":id}})
 
 @app.get("/task/read_sample")
 async def readTaskSample(id):
@@ -39,14 +54,6 @@ async def readTaskSample(id):
     "completionDate": "2024-10-31",
     "creationDate": "2024-10-27"
     }
-
-class Task(BaseModel):
-    name: str
-    desc: str = ""
-    priority: int = 10
-    status: bool = False
-    compDate: str = str(datetime.date.today())
-    createDate: str = str(datetime.date.today())
 
 @app.post("/task/create")
 async def create_task(task: Task):
@@ -61,12 +68,12 @@ async def create_task(task: Task):
         "creationDate": task.createDate,
     }
     print(new_task)
-    todo.tasks.insert_one(new_task)
+    tasks_collection.insert_one(new_task)
     return str(new_task)
 
 @app.get("/task/readall")
 async def readAllTasks():
-    documents = todo.tasks.find()
+    documents = tasks_collection.find()
     tasks = []
     for doc in documents:
         doc["_id"] = str(doc["_id"])
