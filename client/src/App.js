@@ -7,11 +7,14 @@ import Task from "./components/Task";
 
 function App() {
   return (
+    <h1>Hello World</h1>
+    /*
     <div className="App">
       Hello world again
       <header />
       <Task />
     </div>
+    */
   );
 }
 
