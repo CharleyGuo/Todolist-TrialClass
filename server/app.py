@@ -1,81 +1,153 @@
-from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from typing import Optional
-import time
-import datetime
-import json
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pymongo import MongoClient
+from pydantic import BaseModel, constr
+import todo  # your module where `db = MongoClient(...)[...]`
+from datetime import date
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
 
-# Setting up the FastAPI application
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 app = FastAPI()
-origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
 )
 
-# Setting up the MongoDB client
-client = MongoClient("mongodb://127.0.0.1:27017")
-db = client['To-do']
-tasks_collection = db["Tasks"]
-lists = db["Lists"]
-
-# Base classes
 class Task(BaseModel):
-    name: str
-    desc: str = ""
-    priority: int = 10
-    status: bool = False
-    compDate: str = str(datetime.date.today())
-    createDate: str = str(datetime.date.today())
+    taskID: int
+    taskName: str
+    taskDescription: str
+    taskPriority: int
+    taskStatus: bool
+    creationDate: date
+    completionDate: date
+    listID: int
 
-#Endpoints
+class ListModel(BaseModel):
+    listID: int
+    listName: str
+    listDescription: str
+    creationDate: date
 
-@app.delete("/task/deleteall")
-async def deleteTask():
-    tasks_collection.delete_many({})
+class DeletePayload(BaseModel):
+    taskID: int
 
-@app.get("/task/read")
-async def readTask(id):
-    return tasks_collection.find_one({"taskID":{"$eq":id}})
+class DeleteListPayload(BaseModel):
+    listID: int
 
-@app.get("/task/read_sample")
-async def readTaskSample(id):
-    return {
-    "taskID": id, 
-    "taskName": "Sample Task Name", 
-    "taskDescription": "Sample Task Description", 
-    "taskPriority": 1, 
-    "taskStatus": False,
-    "completionDate": "2024-10-31",
-    "creationDate": "2024-10-27"
-    }
+def create_prompt(task_doc):
+    return f"""
+    You are a productivity assistant. Given the task below, generate a suggested plan of action with steps:
+    
+    Task: {task_doc['taskName']}
+    Description: {task_doc['taskDescription']}
+    
+    Plan:
+    """
 
-@app.post("/task/create")
-async def create_task(task: Task):
-    task_id = int(time.time() * 1000)
-    new_task = {
-        "taskID": task_id,
-        "taskName": task.name,
-        "taskDescription": task.desc,
-        "taskPriority": task.priority,
-        "taskStatus": task.status,
-        "completionDate": task.compDate,
-        "creationDate": task.createDate,
-    }
-    print(new_task)
-    tasks_collection.insert_one(new_task)
-    return str(new_task)
+def get_plan_from_gpt(prompt):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
 
-@app.get("/task/readall")
-async def readAllTasks():
-    documents = tasks_collection.find()
-    tasks = []
-    for doc in documents:
+
+@app.get("/tasks/{task_id}/plan")
+def generate_plan_for_task(task_id: int):
+    task = todo.db.Tasks.find_one({"taskID": task_id})
+    if not task:
+        raise HTTPException(404, detail="Task not found")
+    prompt = create_prompt(task)
+    plan = get_plan_from_gpt(prompt)
+    return {"task_id": task_id, "plan": plan}
+
+@app.get("/")
+async def read_root():
+    return {"message": "Hello, World!"}
+
+@app.delete("/task/delete_all")
+async def delete_all_tasks():
+    result = todo.db.Tasks.delete_many({})
+    return {"deleted_count": result.deleted_count}
+
+@app.get("/task/read_all", response_model=list[Task])
+async def get_tasks():
+    docs = []
+    for doc in todo.db.Tasks.find():
         doc["_id"] = str(doc["_id"])
-        tasks.append(doc)
-    return tasks
+        docs.append(doc)
+    return docs
+
+@app.get("/task/read/{task_id}", response_model=Task)
+async def get_task(task_id: int):
+    doc = todo.db.Tasks.find_one({"taskID": task_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Task not found")
+    doc["_id"] = str(doc["_id"])
+    return doc
+
+@app.post("/task/create", status_code=201, response_model=Task)
+async def create_task(task: Task):
+    payload = task.dict()
+    todo.db.Tasks.insert_one(payload)
+    return task
+
+@app.post("/task/update", response_model=Task)
+async def update_task(task: Task):
+    res = todo.db.Tasks.update_one({"taskID": task.taskID}, {"$set": task.dict()})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+@app.post("/task/delete")
+async def delete_task(payload: DeletePayload):
+    res = todo.db.Tasks.delete_one({"taskID": payload.taskID})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"message": "Task deleted"}
+
+@app.get("/list/read_all", response_model=list[ListModel])
+async def get_lists():
+    docs = []
+    for doc in todo.db.Lists.find():
+        doc["_id"] = str(doc["_id"])
+        docs.append(doc)
+    return docs
+
+@app.get("/list/read/{list_id}", response_model=ListModel)
+async def get_list(list_id: int):
+    doc = todo.db.Lists.find_one({"listID": list_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="List not found")
+    doc["_id"] = str(doc["_id"])
+    return doc
+
+@app.post("/list/create", status_code=201, response_model=ListModel)
+async def create_list(list_item: ListModel):
+    payload = list_item.dict()
+    # convert the date back to "YYYY-MM-DD" string
+    payload["creationDate"] = list_item.creationDate.isoformat()
+    todo.db.Lists.insert_one(payload)
+    return list_item
+
+@app.post("/list/update", response_model=ListModel)
+async def update_list(list_item: ListModel):
+    res = todo.db.Lists.update_one({"listID": list_item.listID}, {"$set": list_item.dict()})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    return list_item
+
+@app.post("/list/delete")
+async def delete_list(payload: DeleteListPayload):
+    print(payload)
+    res = todo.db.Lists.delete_one({"listID": payload.listID})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="List not found")
+    return {"message": "List deleted"}

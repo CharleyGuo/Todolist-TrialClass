@@ -22,3 +22,7 @@ Please choose "Clone Git Repository", and use the line: https://github.com/Charl
 Step 3. Open a terminal in VSCode:
 
 ![New a Termianl](images/VSCode-New-Terminal.png)
+
+
+Step 4 (backend setup). Using MongoDB Atlas
+Go to https://www.mongodb.com/products/platform/atlas-database, click GET STARTED in the top right, and deploy a free cluster. With Atlas, MongoDB does the hosting for you, making it easier to use and easier to scale. Follow steps to build a database and add a user. 0.0.0.0/0 for access from any IP. Get the python connection string. 

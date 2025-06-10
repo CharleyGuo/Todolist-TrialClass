@@ -1,34 +1,40 @@
-import React from "react";
-import { useEffect, useState } from "react";
-import "./task.css";
+import {useParams} from 'react-router-dom'
 
-async function getSampleTask() {
-    const response = await fetch('http://127.0.0.1:8000/task/read_sample?id=1', 
-        {method: "GET"}
-    );
-    const data = await response.json();  // assuming the response is JSON
-    console.log(data);
-    return data
-}
-
-export default function Task() {
-    // Put logic for hitting an endpoint to do CRUD stuff. 
-    let tasks = new Array(5);
-    let [task, setTask] = useState(null);
-
-
-    useEffect(() => {
-        async function fetchTask() {
-            const taskData = await getSampleTask();
-            setTask(taskData);
-        }
-        fetchTask();
-    }, []);
+export default function Task(props) {
+    const {activeListId} = useParams()
+    const includeListName = (activeListId === "0")
 
     return (
-        <div classname="task-box">
-            <input type="text" placeholder="Enter Task Name" className="taskinput" />
-            {JSON.stringify(task)}
-        </div>
-    );
+        <>
+        <form className="row g-2">
+            <div className="col-sm-auto">
+                <input className="form-check-input" type="checkbox" checked={props.completion} onChange={() => props.handleCheck(props.id)}/>
+            </div>
+            <div className="col">
+                <div className="row g-2">
+                    <div className="col-sm-auto">
+                        <p>{props.name}</p>
+                    </div>
+                    <div className="col-sm-auto">
+                        <p>{props.priority}</p>
+                    </div>
+                    {
+                        includeListName ? 
+                            <div className="col-sm-auto">
+                                <p>{props.list}</p>
+                            </div>
+                        :
+                        <></>
+                    }
+                    <div className="col-sm d-flex justify-content-end">
+                        <button className="btn btn-close btn-sm" type="button" value="delete" onClick={(e) => {props.handleDelete(props.id)}}></button>
+                    </div>
+                    <div className="col-sm-12">
+                        <p>{props.description}</p>
+                    </div>
+                </div>
+            </div>
+        </form>
+        </>
+    )
 }
